@@ -1,4 +1,5 @@
-// Verdant UI. Data lives in this browser's localStorage under KEY.
+// Wet My Plants UI. Data lives in this browser's localStorage under KEY.
+// The app was first called Verdant; the storage keys keep that name so existing data still loads.
 (function () {
   const L = window.Logic;
   const KEY = 'verdant.v1';
@@ -142,7 +143,7 @@
 
   function chatSystem(p) {
     const t = T(), loc = state.settings.location, w = weather();
-    const parts = ['You are the plant-care advisor in the Sick bay of Verdant, a plant-care app. Give practical, specific advice for the owner’s situation, using the details below. ' +
+    const parts = ['You are the plant-care advisor in the Sick bay of Wet My Plants, a plant-care app. Give practical, specific advice for the owner’s situation, using the details below. ' +
       'Keep answers short: a few sentences or a short list. Use plain text; "- " bullets are fine, but no headings, tables or bold. ' +
       'If you can’t be sure, say what to look for or check. Mention toxicity to pets or children only when it matters. If a plant may not survive, suggest taking cuttings.'];
     parts.push(`Today is ${t}.` + (loc ? ` The owner lives in ${loc.name}${hemi() ? `; it is ${L.season(t, hemi())} there` : ''}.` : ''));
@@ -304,7 +305,7 @@
     try { const st = JSON.parse(raw); if (L.validState(st)) return st; } catch (e) { /* handled below */ }
     // Keep unreadable data aside instead of overwriting it.
     try { localStorage.setItem(KEY + '.unreadable.' + Date.now(), raw); } catch (e) { /* nothing more we can do */ }
-    alert('Your saved plant data could not be read. It was kept aside and Verdant started fresh.');
+    alert('Your saved plant data could not be read. It was kept aside and Wet My Plants started fresh.');
     return fresh();
   }
   function save() {
@@ -392,8 +393,8 @@
       case 'setloc': return setLocation(places[+d.i]);
       case 'myloc': return useMyLocation();
       case 'clearloc': return setLocation(null);
-      case 'csv': return download(`verdant-care-log-${T()}.csv`, '﻿' + L.toCSV(state), 'text/csv');
-      case 'backup': return download(`verdant-backup-${T()}.json`, JSON.stringify(state), 'application/json');
+      case 'csv': return download(`wet-my-plants-care-log-${T()}.csv`, '﻿' + L.toCSV(state), 'text/csv');
+      case 'backup': return download(`wet-my-plants-backup-${T()}.json`, JSON.stringify(state), 'application/json');
       case 'restore': return restore();
       default: return;
     }
@@ -431,7 +432,7 @@
     chooseFile('application/json,.json', async (file) => {
       let st;
       try { st = JSON.parse(await file.text()); } catch (e) { st = null; }
-      if (!L.validState(st)) return alert('That file is not a Verdant backup.');
+      if (!L.validState(st)) return alert('That file is not a Wet My Plants backup.');
       if (!confirm(`Replace your current data with this backup (${st.plants.length} plants, ${st.log.length} care entries)?`)) return;
       const before = state;
       state = st;
@@ -856,7 +857,7 @@
         <form id="locForm" class="locsearch"><input id="locQ" placeholder="${loc ? 'Change town or city' : 'Search your town or city'}" maxlength="60" autocomplete="off"><button class="btn primary sm">Search</button></form>
         <div id="locResults" class="results">${places.map((pl, i) => `<button class="result" data-act="setloc" data-i="${i}">${icon('pin', 16)} ${esc(pl.name)}</button>`).join('')}</div>
         <button class="btn ghost sm" data-act="myloc">${icon('pin', 16)} Use my location</button>
-        <p class="muted small">Forecasts come from Open-Meteo, a free weather service. Only your town’s rough coordinates are sent. Your place also tells Verdant when your winter is, so feeding eases off then.</p>
+        <p class="muted small">Forecasts come from Open-Meteo, a free weather service. Only your town’s rough coordinates are sent. Your place also tells the app when your winter is, so feeding eases off then.</p>
       </div></section>
     <section class="room"><header><h2 class="serif">Plant ID from photos</h2></header>
       <div class="card form">

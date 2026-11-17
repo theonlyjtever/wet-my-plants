@@ -1,5 +1,5 @@
 // Sick bay care guides. Plain data: one entry per common problem.
-// pause: care types Verdant stops scheduling while a plant is in sick bay with this problem.
+// pause: care types Wet My Plants stops scheduling while a plant is in sick bay with this problem.
 // Feeding is paused for every problem: stressed plants can't use fertiliser and it can burn weak roots.
 (function () {
   const GUIDES = [
