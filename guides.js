@@ -1,0 +1,165 @@
+// Sick bay care guides. Plain data: one entry per common problem.
+// pause: care types Verdant stops scheduling while a plant is in sick bay with this problem.
+// Feeding is paused for every problem: stressed plants can't use fertiliser and it can burn weak roots.
+(function () {
+  const GUIDES = [
+    {
+      id: 'overwatered', title: 'Overwatering & root rot', icon: 'drop', pause: ['water', 'feed'],
+      signs: 'Yellowing lower leaves, soft or mushy stems, soil that stays wet, a musty smell.',
+      cause: 'Roots sitting in wet soil run out of air and start to rot, so they can no longer take up water.',
+      steps: [
+        'Stop watering until the top 3–5 cm of soil is dry.',
+        'Empty any saucer or outer pot that is holding water.',
+        'Ease the plant out and look at the roots: healthy ones are firm and pale, rotten ones are brown, mushy and smelly.',
+        'Trim rotten roots with clean scissors and repot into fresh, well-draining mix in a pot with drainage holes.',
+        'Move it to bright, indirect light so the soil dries faster.',
+      ],
+      after: 'Water again only when the top few centimetres are dry, and less often than before. Consider a longer watering interval on its plant page.',
+      recovery: 'New growth and no fresh yellow leaves within 2–4 weeks. If most roots were lost, take healthy cuttings as a backup.',
+    },
+    {
+      id: 'underwatered', title: 'Thirsty / underwatered', icon: 'drop', pause: ['feed'],
+      signs: 'Drooping or curling leaves, crispy edges, soil pulling away from the pot, a pot that feels light.',
+      cause: 'The soil has dried right through, so the plant is losing water faster than it can take it up.',
+      steps: [
+        'Stand the pot in a bowl of water for 20–30 minutes so the whole root ball soaks up water from below.',
+        'Let it drain fully, then put it back in its spot.',
+        'Remove leaves that are completely crispy; leave ones that are only partly brown.',
+        'Check the soil again in 2–3 days.',
+      ],
+      after: 'Water when the top 2–3 cm of soil is dry. If it dries out often, shorten its watering interval or move it out of hot, direct sun.',
+      recovery: 'Most plants perk up within a day. Crispy leaves won’t turn green again, but new leaves should be healthy.',
+    },
+    {
+      id: 'spider-mites', title: 'Spider mites', icon: 'bug', pause: ['feed'],
+      signs: 'Fine webbing under leaves or between stems, tiny pale speckles, dull or bronzed leaves.',
+      cause: 'Tiny mites feed on leaf cells. They spread fast in warm, dry air.',
+      steps: [
+        'Move the plant away from your other plants.',
+        'Shower the leaves, top and underside, to wash off mites and webbing.',
+        'Wipe each leaf with a damp cloth.',
+        'Spray all surfaces with insecticidal soap or neem oil, especially leaf undersides.',
+        'Repeat the spray every 5–7 days, three times in total, to catch newly hatched mites.',
+      ],
+      after: 'Raise humidity (group plants or use a pebble tray) and check leaf undersides weekly for a month.',
+      recovery: 'No new webbing or speckling after the third treatment. Damaged leaves stay marked; judge by new growth.',
+    },
+    {
+      id: 'mealybugs', title: 'Mealybugs & scale', icon: 'bug', pause: ['feed'],
+      signs: 'White cottony clumps in leaf joints, or brown bumps on stems; sticky leaves.',
+      cause: 'Sap-sucking insects hide in sheltered spots and weaken the plant over time.',
+      steps: [
+        'Move the plant away from your other plants.',
+        'Dab every bug you can see with a cotton bud dipped in rubbing alcohol.',
+        'Wipe leaves and stems clean, including leaf joints and undersides.',
+        'Spray with insecticidal soap or neem oil.',
+        'Repeat the spray weekly for 3–4 weeks.',
+      ],
+      after: 'Check new growth and leaf joints every week; these pests come back from a few survivors.',
+      recovery: 'No new clumps or bumps for three weeks after the last treatment.',
+    },
+    {
+      id: 'fungus-gnats', title: 'Fungus gnats', icon: 'bug', pause: ['feed'],
+      signs: 'Small dark flies around the soil; tiny larvae in the top layer of soil.',
+      cause: 'Gnats breed in soil that stays moist. Adults are a nuisance; larvae can nibble fine roots.',
+      steps: [
+        'Let the top 3–5 cm of soil dry out between waterings.',
+        'Put yellow sticky traps at soil level to catch adults.',
+        'Water from below so the surface stays drier.',
+        'Replace the top layer of soil, or cover it with a thin layer of sand or grit.',
+      ],
+      after: 'Keep watering a little less often. Mosquito dunks (BTI) soaked in watering water kill larvae if gnats persist.',
+      recovery: 'Few or no new gnats on the traps after 2–3 weeks.',
+    },
+    {
+      id: 'aphids', title: 'Aphids', icon: 'bug', pause: ['feed'],
+      signs: 'Clusters of small green, black or white insects on new shoots and buds; sticky, curled leaves.',
+      cause: 'Aphids suck sap from soft new growth and multiply quickly.',
+      steps: [
+        'Rinse them off with a strong spray of water.',
+        'Squash or wipe off any left behind.',
+        'Spray with insecticidal soap, covering new growth and leaf undersides.',
+        'Repeat every 5–7 days until no new aphids appear.',
+      ],
+      after: 'Check new shoots weekly. Outdoors, ladybirds and lacewings help keep them down.',
+      recovery: 'New growth is clean and uncurled.',
+    },
+    {
+      id: 'shock', title: 'Shock after a move or repot', icon: 'pot', pause: ['feed'],
+      signs: 'Leaves dropping or wilting soon after moving house, changing spot or repotting.',
+      cause: 'A sudden change in light, temperature or roots makes the plant shed leaves while it adjusts.',
+      steps: [
+        'Pick one good spot and leave it there; avoid moving it again.',
+        'Keep it away from heaters, air conditioning and cold draughts.',
+        'Water normally when the top of the soil is dry; don’t overcompensate.',
+        'Don’t repot or prune while it settles.',
+      ],
+      after: 'Be patient: most plants settle within 2–6 weeks.',
+      recovery: 'Leaf drop stops and new leaves start to appear.',
+    },
+    {
+      id: 'sunburn', title: 'Sunburn / scorch', icon: 'sun', pause: ['feed'],
+      signs: 'Bleached, pale or crispy brown patches on the side facing the sun.',
+      cause: 'Direct sun, often through glass or after a move outdoors, burns leaves that are not used to it.',
+      steps: [
+        'Move it out of direct sun, or filter the light with a sheer curtain.',
+        'Check the soil; scorched plants often dry out too.',
+        'Trim leaves that are mostly burned; leave lightly marked ones to keep feeding the plant.',
+      ],
+      after: 'If it needs more sun, increase it gradually over two weeks.',
+      recovery: 'New leaves come in without marks. Burned patches don’t heal.',
+    },
+    {
+      id: 'low-light', title: 'Leggy or low light', icon: 'sun', pause: ['feed'],
+      signs: 'Long stretched stems, small or pale new leaves, leaning hard toward the window.',
+      cause: 'The plant is stretching to find more light than it is getting.',
+      steps: [
+        'Move it closer to a window or to a brighter room (bright, indirect light suits most houseplants).',
+        'Rotate it a quarter turn every week.',
+        'Prune the longest stems just above a leaf to encourage bushier growth.',
+        'In dark homes, add a plant grow light for 10–12 hours a day.',
+      ],
+      after: 'Keep rotating weekly. Pruned pieces of many plants (like pothos) root easily in water.',
+      recovery: 'New leaves are bigger and the gaps between them are shorter.',
+    },
+    {
+      id: 'brown-tips', title: 'Brown, crispy tips', icon: 'leaf', pause: ['feed'],
+      signs: 'Leaf tips or edges turning brown and crispy.',
+      cause: 'Usually dry air, uneven watering, or salts building up from fertiliser and tap water.',
+      steps: [
+        'Water evenly: soak through when the top of the soil is dry, never leave it bone-dry for long.',
+        'Raise humidity: group plants together or use a pebble tray or humidifier.',
+        'Flush the soil: run plenty of water through the pot to wash out built-up salts.',
+        'Trim the brown tips with clean scissors, following the leaf’s natural shape.',
+      ],
+      after: 'For sensitive plants (like calatheas), use rainwater or filtered water.',
+      recovery: 'New leaves grow without brown tips.',
+    },
+    {
+      id: 'cold-damage', title: 'Cold damage', icon: 'thermo', pause: ['feed'],
+      signs: 'Dark, water-soaked or blackened leaves after a cold night or a cold window.',
+      cause: 'Frost or near-freezing air damages leaf cells, especially in tropical plants.',
+      steps: [
+        'Move it somewhere warm and away from cold glass and draughts.',
+        'Water sparingly; cold-damaged plants use little water.',
+        'Don’t prune yet; wait until new growth shows which stems are still alive.',
+      ],
+      after: 'Once new growth appears, cut off dead leaves and stems.',
+      recovery: 'New shoots appear within a few weeks, often from the base.',
+    },
+    {
+      id: 'leaf-spot', title: 'Leaf spots (fungal)', icon: 'leaf', pause: ['feed'],
+      signs: 'Brown or black spots, often with a yellow ring, spreading across leaves.',
+      cause: 'Fungi or bacteria spread on leaves that stay wet, in still, crowded air.',
+      steps: [
+        'Remove affected leaves and put them in the bin, not the compost.',
+        'Water the soil, not the leaves, and do it in the morning.',
+        'Give it more space and air flow.',
+        'Clean your scissors after each cut.',
+      ],
+      after: 'If spots keep spreading outdoors, a copper- or sulfur-based fungicide can help.',
+      recovery: 'No new spots for two weeks.',
+    },
+  ];
+  if (typeof module !== 'undefined') module.exports = GUIDES; else window.GUIDES = GUIDES;
+})();
