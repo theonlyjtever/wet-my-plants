@@ -507,7 +507,7 @@
     dialog.onclose = null;
     dialog.innerHTML = `<form class="form">
       <h2 class="serif">${p ? 'Edit plant' : 'New plant'}</h2>
-      ${photo ? `<img class="preview" src="${photo.data}" alt="">` : ''}
+      ${p ? '' : '<div class="photoslot"></div>'}
       ${preset ? `<p class="aihint">${icon('leaf', 16)} Suggested by Claude · ${esc(preset.confidence)} confidence. Check the details, then save.</p>` : ''}
       ${field('name', 'Nickname *', v.name, 'required maxlength="40"')}
       ${field('common', 'Common name', v.common, 'maxlength="60"')}
@@ -527,6 +527,18 @@
     </form>`;
     const form = dialog.querySelector('form');
     form.querySelector('[value=cancel]').onclick = () => dialog.close();
+    // New plants only: take or choose a first photo. Only this slot redraws, so typed fields are kept.
+    const slot = form.querySelector('.photoslot');
+    const paintSlot = () => {
+      if (!slot) return;
+      slot.innerHTML = photo
+        ? `<img class="preview" src="${photo.data}" alt="Photo of the new plant"><div class="pair"><button type="button" class="btn ghost sm" data-photo="pick">${icon('camera', 16)} Change photo</button>${preset ? '' : `<button type="button" class="btn ghost sm" data-photo="remove">${icon('x', 16)} Remove</button>`}</div>`
+        : `<button type="button" class="photopick" data-photo="pick">${icon('camera', 26)}<b>Take or choose a photo</b><small>Optional. It becomes the plant’s first growth photo.</small></button>`;
+      slot.querySelector('[data-photo=pick]').onclick = () => pickImage((img) => { photo = { date: T(), data: toJpeg(img, 640, 0.74) }; paintSlot(); });
+      const rm = slot.querySelector('[data-photo=remove]');
+      if (rm) rm.onclick = () => { photo = null; paintSlot(); };
+    };
+    paintSlot();
     form.onsubmit = (e) => {
       e.preventDefault();
       const f = Object.fromEntries(new FormData(form));
