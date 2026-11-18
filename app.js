@@ -81,7 +81,11 @@
     },
   };
   let SDK = null;
-  async function identify(base64) {
+  // name: the owner's correction. Then Claude trusts the name and only uses the photo (if any) as context.
+  async function identify(base64, name = '') {
+    const ask = name
+      ? `The owner says this plant is “${name.slice(0, 60)}”. Treat that as correct: fix the spelling, give its usual common name and botanical name, and give growing-season care intervals for it; the app adjusts feeding for winter itself. Set is_plant to false only if that is not the name of a plant.`
+      : 'Identify this plant. Give growing-season care intervals; the app adjusts feeding for winter itself.';
     SDK = SDK || (await import(SDK_URL));
     const client = new SDK.default({ apiKey: getKey(), dangerouslyAllowBrowser: true });
     const res = await client.beta.messages.create({
@@ -90,12 +94,12 @@
       betas: ['server-side-fallback-2026-07-01'],
       fallbacks: 'default',
       output_config: { effort: 'medium', format: { type: 'json_schema', schema: ID_SCHEMA } },
-      system: 'You identify houseplants and garden plants from photos for a plant-care app and suggest typical care intervals. If unsure of the species, give your best guess and lower the confidence.',
+      system: 'You identify houseplants and garden plants from photos or names for a plant-care app and suggest typical care intervals. If unsure of the species, give your best guess and lower the confidence.',
       messages: [{
         role: 'user',
         content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
-          { type: 'text', text: 'Identify this plant. Give growing-season care intervals; the app adjusts feeding for winter itself.' },
+          ...(base64 ? [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } }] : []),
+          { type: 'text', text: ask },
         ],
       }],
     });
@@ -551,6 +555,8 @@
       ${field('name', 'Nickname *', v.name, 'required maxlength="40"')}
       ${field('common', 'Common name', v.common, 'maxlength="60"')}
       ${field('species', 'Species', v.species, 'maxlength="60"')}
+      <div class="fixid"><button type="button" class="btn ghost sm" data-fix>${icon('leaf', 16)} ${p ? 'Wrong plant? Update care for this name' : 'Fill in care for this name'}</button>
+        <small class="muted">Type the right common name or species above, then tap. Claude updates the species, care intervals and notes; nothing changes until you save.</small></div>
       <div class="row2">${field('room', 'Room or zone', v.room, 'list="rooms" maxlength="30"')}${field('spot', 'Spot', v.spot, 'maxlength="40" placeholder="e.g. north window"')}</div>
       <datalist id="rooms">${rooms.map((r) => `<option value="${esc(r)}">`).join('')}</datalist>
       <div class="row2">${field('acquired', 'Date acquired', v.acquired, 'type="date"')}${field('source', 'Source', v.source, 'maxlength="60" placeholder="nursery, cutting…"')}</div>
@@ -578,6 +584,41 @@
       if (rm) rm.onclick = () => { photo = null; paintSlot(); };
     };
     paintSlot();
+    // Correct a wrong identification: ask Claude about the typed name and fill the form in place.
+    const fixBtn = form.querySelector('[data-fix]');
+    const startCommon = v.common || '';
+    fixBtn.onclick = async () => {
+      const el = (n) => form.elements[n];
+      const asked = el('common').value.trim() || el('species').value.trim();
+      if (!asked) return alert('Type the plant’s common name or species first.');
+      if (!getKey()) return alert('To look up care for a plant name, add your Anthropic API key in Settings. You can still change the details by hand.');
+      const pic = (p && latest(p)) || photo;
+      const label = fixBtn.innerHTML;
+      fixBtn.disabled = true;
+      fixBtn.textContent = 'Asking Claude…';
+      try {
+        const r = L.fromIdentification(await identify(pic ? pic.data.split(',')[1] : '', asked));
+        if (!r) { alert(`Claude doesn’t recognise “${asked}” as a plant. Check the spelling and try again.`); return; }
+        // Keep a custom nickname; replace one that was just the old (wrong) common name.
+        const nick = el('name').value.trim();
+        if (!nick || nick === startCommon || nick === asked) el('name').value = r.name.slice(0, 40);
+        el('common').value = r.common;
+        el('species').value = r.species;
+        el('water').value = r.every.water;
+        el('feed').value = r.every.feed;
+        el('rotate').value = r.every.rotate;
+        const old = el('notes').value.trim();
+        el('notes').value = (old && old !== r.notes ? `${r.notes}\n\nEarlier notes: ${old}` : r.notes).slice(0, 500);
+        let hint = form.querySelector('.aihint');
+        if (!hint) { hint = document.createElement('p'); hint.className = 'aihint'; fixBtn.parentNode.before(hint); }
+        hint.innerHTML = `${icon('leaf', 16)} Updated by Claude for ${esc(r.common || asked)} · ${esc(r.confidence)} confidence. Check the details, then save.`;
+      } catch (e) {
+        alert(explain(e));
+      } finally {
+        fixBtn.disabled = false;
+        fixBtn.innerHTML = label;
+      }
+    };
     form.onsubmit = (e) => {
       e.preventDefault();
       const f = Object.fromEntries(new FormData(form));
@@ -794,7 +835,7 @@
       <div class="tags">${(p.tags || []).map((tg) => `<span class="tag">${esc(tg)}</span>`).join('')}</div>${p.notes ? `<p class="note">${esc(p.notes)}</p>` : ''}</section>` : ''}
     <section class="room"><header><h2 class="serif">History</h2><span class="muted small">${log.length} entr${log.length === 1 ? 'y' : 'ies'}</span></header>
       <div class="card list">${log.slice(0, 30).map((e) => `<div class="doneitem t-${esc(e.type)}"><span class="dot">${icon(ACT[e.type] ? ACT[e.type].icon : 'check', 14)}</span><span>${esc(ACT[e.type] ? ACT[e.type].label : e.type)}<small> · ${esc(e.date)}</small></span><button class="link" data-act="undo" data-log="${e.id}" aria-label="Remove entry">Remove</button></div>`).join('') || '<p class="muted small">Nothing logged yet.</p>'}</div></section>
-    <div class="pair end">${p.sick ? '' : `<button class="btn outline" data-act="admit" data-id="${p.id}">${icon('cross', 16)} Move to sick bay</button>`}<button class="btn ghost" data-act="edit" data-id="${p.id}">Edit</button><button class="btn danger" data-act="delete" data-id="${p.id}">Delete plant</button></div>`;
+    <div class="pair end">${p.sick ? '' : `<button class="btn outline" data-act="admit" data-id="${p.id}">${icon('cross', 16)} Move to sick bay</button>`}<button class="btn ghost" data-act="edit" data-id="${p.id}">Edit or fix the name</button><button class="btn danger" data-act="delete" data-id="${p.id}">Delete plant</button></div>`;
   }
 
   // ---------- sick bay ----------
@@ -925,10 +966,10 @@
     <section class="room"><header><h2 class="serif">Your data</h2><span class="muted small">${Math.ceil((used * 2) / 1024)} KB used</span></header>
       <p class="muted small">Everything is stored only in this browser on this device. Back up now and then.</p>
       <div class="stack">
-        <button class="btn outline" data-act="csv">${icon('download', 16)} Export care log (CSV)</button>
-        <p class="muted small">${getMark(BACKUP_AT) ? `Last backup on this device: ${esc(getMark(BACKUP_AT))}.` : 'No backup from this device yet.'} Keep the file off this phone (iCloud Drive, Google Drive or email) so a lost phone doesn’t lose your plants.</p>
-        <button class="btn outline" data-act="backup">${icon('download', 16)} Back up everything</button>
+        <button class="btn primary" data-act="backup">${icon('download', 16)} Back up everything (JSON)</button>
+        <p class="muted small">${getMark(BACKUP_AT) ? `Last backup on this device: ${esc(getMark(BACKUP_AT))}.` : 'No backup from this device yet.'} Keep the file off this phone (iCloud Drive, Google Drive or email) so a lost phone doesn’t lose your plants. On Android the backup is saved as a .txt file; it restores the same way.</p>
         <button class="btn ghost" data-act="restore">Restore from backup…</button>
+        <button class="btn outline" data-act="csv">${icon('download', 16)} Export care log (CSV, for spreadsheets)</button>
       </div></section>`;
   }
 
