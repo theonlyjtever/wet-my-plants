@@ -108,6 +108,7 @@
   const validPlant = (p) => !!p && isId(p.id) && typeof p.name === 'string' && DATE.test(p.added) &&
     !!p.every && CARE.every((k) => isNum(p.every[k])) &&
     (p.tags == null || (Array.isArray(p.tags) && p.tags.every((t) => typeof t === 'string'))) &&
+    (p.group == null || (typeof p.group === 'string' && p.group.length <= 40)) &&
     (p.photos == null || (Array.isArray(p.photos) && p.photos.every((ph) => ph && DATE.test(ph.date) && PHOTO.test(ph.data)))) &&
     (p.sick == null || (typeof p.sick === 'object' && typeof p.sick.issue === 'string' && /^[a-z-]+$/.test(p.sick.issue) && DATE.test(p.sick.since) &&
       Array.isArray(p.sick.steps) && p.sick.steps.every((x) => typeof x === 'boolean') &&

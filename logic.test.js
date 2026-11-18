@@ -175,4 +175,6 @@ test('import validation rejects values that could inject HTML', () => {
   bad((s) => { s.plants[0].every.feed = '<img src=x onerror=alert(1)>'; return s; });
   bad((s) => { s.plants[0].tags = 'not a list'; return s; });
   bad((s) => { delete s.log[0].id; return s; });
+  bad((s) => { s.plants[0].group = { name: 'x' }; return s; });
+  assert.ok(L.validState({ ...ok, plants: [{ ...ok.plants[0], group: 'Bamboo trio' }] }));
 });

@@ -132,6 +132,7 @@
     const sched = L.CARE.filter((type) => p.every[type]).map((type) => `${ACT[type].verb.toLowerCase()} every ${p.every[type]} days (last: ${L.lastDone(state.log, p.id, type) || 'never logged'})`);
     lines.push('Care schedule: ' + (sched.join('; ') || 'none set') + '.');
     lines.push(`Health score in the app: ${L.health(p, state.log, hemi(), t)}/100 (drops with overdue care, recent pests, or being in sick bay).`);
+    if (p.group) lines.push(`Group: ${p.group}, planted together with ${state.plants.filter((x) => x.group === p.group && x.id !== p.id).map((x) => x.name + (x.sick ? ' (also in sick bay)' : '')).join(', ') || 'no others'}.`);
     if (p.tags && p.tags.length) lines.push('Tags: ' + p.tags.join(', ') + '.');
     if (p.notes) lines.push('Owner notes: ' + p.notes);
     const recent = state.log.filter((e) => e.plantId === p.id).sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 12)
@@ -338,6 +339,9 @@
   const outdoorDry = () => state.plants.filter((p) => p.outdoor && p.every.water &&
     !state.log.some((e) => e.plantId === p.id && e.date === T() && (e.type === 'water' || e.type === 'rain')));
 
+  // Group members (in one room) due for water today. L.tasks already leaves out plants whose watering is paused in sick bay.
+  const groupThirsty = (g, room) => L.tasks(state, T()).filter((x) => x.type === 'water' && x.plant.group === g && (x.plant.room || 'Unsorted') === room).map((x) => x.plant);
+
   function act(a, d) {
     const p = d.id && plantById(d.id);
     if (['tab', 'open', 'back', 'guide', 'patient'].includes(a)) window.scrollTo(0, 0);
@@ -352,6 +356,7 @@
       case 'batch':
         L.tasks(state, T()).filter((t) => t.type === 'water' && (t.plant.room || 'Unsorted') === d.room).forEach((t) => addLog(t.plant.id, 'water'));
         break;
+      case 'groupwater': groupThirsty(d.group, d.room).forEach((x) => addLog(x.id, 'water')); break;
       case 'undo': state.log = state.log.filter((e) => e.id !== d.log); break;
       case 'add': return openForm(null);
       case 'admit': return openAdmit(d.id, d.guide);
@@ -545,6 +550,7 @@
   // preset: values suggested by Claude; photo: the picture the plant was added from.
   function openForm(p, preset = null, photo = null) {
     const rooms = [...new Set(state.plants.map((x) => x.room).filter(Boolean))];
+    const groups = [...new Set(state.plants.map((x) => x.group).filter(Boolean))];
     const v = p || preset || { every: { water: 7, feed: 30, rotate: 14 }, tags: [] };
     const field = (name, label, value, attrs = '') => `<label>${label}<input name="${name}" value="${esc(value)}" ${attrs}></label>`;
     dialog.onclose = null;
@@ -559,6 +565,9 @@
         <small class="muted">Type the right common name or species above, then tap. Claude updates the species, care intervals and notes; nothing changes until you save.</small></div>
       <div class="row2">${field('room', 'Room or zone', v.room, 'list="rooms" maxlength="30"')}${field('spot', 'Spot', v.spot, 'maxlength="40" placeholder="e.g. north window"')}</div>
       <datalist id="rooms">${rooms.map((r) => `<option value="${esc(r)}">`).join('')}</datalist>
+      <div class="row2">${field('group', 'Group (optional)', v.group, 'list="groups" maxlength="40" placeholder="e.g. Bamboo trio"')}${p ? '' : field('count', 'How many?', 1, 'type="number" min="1" max="12" required')}</div>
+      <datalist id="groups">${groups.map((g) => `<option value="${esc(g)}">`).join('')}</datalist>
+      ${p ? '' : '<p class="muted small formnote">More than one? Each gets its own entry (“Bamboo 1”, “Bamboo 2”…), grouped together, so one can go to sick bay while the others don’t.</p>'}
       <div class="row2">${field('acquired', 'Date acquired', v.acquired, 'type="date"')}${field('source', 'Source', v.source, 'maxlength="60" placeholder="nursery, cutting…"')}</div>
       <fieldset><legend>Care every … days (0 = never)</legend><div class="row3">
         ${field('water', 'Water', v.every.water, 'type="number" min="0" max="365" required')}
@@ -624,7 +633,7 @@
       const f = Object.fromEntries(new FormData(form));
       const num = (x) => Math.max(0, Math.min(365, Math.round(+x) || 0));
       const data = {
-        name: f.name.trim(), common: f.common.trim(), species: f.species.trim(), room: f.room.trim(), spot: f.spot.trim(),
+        name: f.name.trim(), common: f.common.trim(), species: f.species.trim(), room: f.room.trim(), spot: f.spot.trim(), group: f.group.trim(),
         acquired: f.acquired, source: f.source.trim(), outdoor: !!f.outdoor, notes: f.notes.trim(),
         tags: f.tags.split(',').map((t) => t.trim()).filter(Boolean),
         every: { water: num(f.water), feed: num(f.feed), rotate: num(f.rotate) },
@@ -633,7 +642,14 @@
       // Look the plant up again: another tab may have reloaded state while the form was open.
       const target = p && plantById(p.id);
       if (target) Object.assign(target, data);
-      else { const np = { id: uid(), added: T(), photos: photo ? [photo] : [], snooze: {}, ...data }; state.plants.push(np); view = { tab: 'plants', plantId: np.id }; }
+      else {
+        // Several at once: separate entries ("Bamboo 1", "Bamboo 2"…) that share a group, so each keeps its own care and sick-bay status.
+        const n = Math.max(1, Math.min(12, Math.round(+f.count) || 1));
+        if (n > 1 && !data.group) data.group = data.name.slice(0, 40);
+        const made = Array.from({ length: n }, (_, i) => ({ id: uid(), added: T(), photos: photo ? [photo] : [], snooze: {}, ...data, every: { ...data.every }, tags: [...data.tags], name: n > 1 ? `${data.name.slice(0, 36)} ${i + 1}` : data.name }));
+        state.plants.push(...made);
+        view = n > 1 ? { tab: 'plants' } : { tab: 'plants', plantId: made[0].id };
+      }
       save();
       dialog.close();
       render();
@@ -788,17 +804,28 @@
     if (!state.plants.length) return html + `<section class="empty"><p>No plants yet. Add one by hand or from a photo.</p></section>`;
     const rooms = {};
     state.plants.forEach((p) => (rooms[p.room || 'Unsorted'] = rooms[p.room || 'Unsorted'] || []).push(p));
+    const card = (p) => {
+      const h = L.health(p, state.log, hemi(), t);
+      const due = L.dueDate(p, state.log, 'water', hemi(), t);
+      return `<button class="pcard" data-act="open" data-id="${p.id}">${photo(p, 'pimg')}
+        <span class="badge ${hClass(h)}">${h}</span>${p.sick ? `<span class="sickflag">${icon('cross', 13)} Sick bay</span>` : ''}
+        <span class="pinfo"><b>${esc(p.name)}</b><small>${esc(p.common || p.species || '')}</small>
+          ${p.sick && p.sick.pause.includes('water') ? `<span class="due">${icon('drop', 12)} paused</span>` : `<span class="due ${due && due < t ? 'late' : ''}">${icon('drop', 12)} ${dueText(due)}</span>`}</span></button>`;
+    };
+    const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
     for (const room of Object.keys(rooms).sort()) {
-      html += `<section class="room"><header><h2 class="serif">${esc(room)}</h2><span class="muted small">${rooms[room].length}</span></header><div class="grid">`;
-      for (const p of rooms[room].sort((a, b) => a.name.localeCompare(b.name))) {
-        const h = L.health(p, state.log, hemi(), t);
-        const due = L.dueDate(p, state.log, 'water', hemi(), t);
-        html += `<button class="pcard" data-act="open" data-id="${p.id}">${photo(p, 'pimg')}
-          <span class="badge ${hClass(h)}">${h}</span>${p.sick ? `<span class="sickflag">${icon('cross', 13)} Sick bay</span>` : ''}
-          <span class="pinfo"><b>${esc(p.name)}</b><small>${esc(p.common || p.species || '')}</small>
-            <span class="due ${due && due < t ? 'late' : ''}">${icon('drop', 12)} ${dueText(due)}</span></span></button>`;
+      const list = rooms[room].sort(byName);
+      html += `<section class="room"><header><h2 class="serif">${esc(room)}</h2><span class="muted small">${list.length}</span></header>`;
+      const solo = list.filter((p) => !p.group);
+      if (solo.length) html += `<div class="grid">${solo.map(card).join('')}</div>`;
+      for (const g of [...new Set(list.map((p) => p.group).filter(Boolean))].sort()) {
+        const members = list.filter((p) => p.group === g);
+        const thirsty = groupThirsty(g, room).length;
+        html += `<div class="pgroup"><header><b>${icon('leaf', 15)} ${esc(g)}</b><span class="muted small">${members.length} plant${s(members.length)}</span>
+          ${thirsty ? `<button class="chip t-water" data-act="groupwater" data-group="${esc(g)}" data-room="${esc(room)}">${icon('drop', 14)} Water ${thirsty === members.length ? 'all ' : ''}${thirsty}</button>` : ''}</header>
+          <div class="grid">${members.map(card).join('')}</div></div>`;
       }
-      html += `</div></section>`;
+      html += `</section>`;
     }
     return html;
   }
@@ -826,6 +853,8 @@
     ${p.sick ? `<button class="alert sickbay" data-act="patient" data-id="${p.id}">${icon('cross', 22)}<div><b>In sick bay · day ${L.diffDays(p.sick.since, t) + 1}</b>
       <span>${esc(guideById(p.sick.issue) ? guideById(p.sick.issue).title : 'Unwell')} · open the recovery plan</span></div>${icon('arrow', 18)}</button>` : ''}
     ${since || p.source ? `<p class="meta">${icon('cal', 14)} ${esc([since, p.source].filter(Boolean).join(' · '))}</p>` : ''}
+    ${p.group ? `<div class="groupmates"><span class="muted small">${icon('leaf', 14)} Group: <b>${esc(p.group)}</b></span>${state.plants.filter((x) => x.group === p.group && x.id !== p.id).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+      .map((x) => `<button class="chip" data-act="open" data-id="${x.id}">${esc(x.name)}${x.sick ? ` ${icon('cross', 12)}` : ''}</button>`).join('') || '<span class="muted small">No other plants in this group yet.</span>'}</div>` : ''}
     ${next ? `<div class="needs">${next}</div>` : ''}
     <section class="room"><header><h2 class="serif">Log care</h2><span class="muted small">One tap</span></header>
       <div class="loggrid">${['water', 'feed', 'repot', 'prune', 'rotate', 'pest'].map((type) => `<button class="pill t-${type}" data-act="log" data-id="${p.id}" data-type="${type}">${icon(ACT[type].icon, 16)}${type === 'pest' ? 'Pest spray' : ACT[type].label}</button>`).join('')}</div></section>
