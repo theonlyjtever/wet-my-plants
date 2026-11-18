@@ -394,7 +394,8 @@
       case 'myloc': return useMyLocation();
       case 'clearloc': return setLocation(null);
       case 'csv': return download(`wet-my-plants-care-log-${T()}.csv`, '﻿' + L.toCSV(state), 'text/csv');
-      case 'backup': return download(`wet-my-plants-backup-${T()}.json`, JSON.stringify(state), 'application/json');
+      case 'backup': return backup();
+      case 'backuplater': setMark(BACKUP_SNOOZE); return render();
       case 'restore': return restore();
       default: return;
     }
@@ -410,6 +411,44 @@
       () => alert('Location was not shared. Search for your town instead.'),
       { timeout: 15000, maximumAge: 3600e3 },
     );
+  }
+
+  // Per-device dates (not in the backup itself): when this phone last backed up, and when "Not now" was tapped.
+  const BACKUP_AT = 'verdant.backupAt', BACKUP_SNOOZE = 'verdant.backupSnooze';
+  const getMark = (k) => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
+  const setMark = (k) => { try { localStorage.setItem(k, T()); } catch (e) { /* reminder is optional */ } };
+  const BACKUP_EVERY = 14, SNOOZE_DAYS = 3;
+  function backupDue() {
+    if (!state.plants.length) return false;
+    const t = T();
+    const snoozed = getMark(BACKUP_SNOOZE);
+    if (snoozed && L.diffDays(snoozed, t) < SNOOZE_DAYS) return false;
+    // Never backed up: count from the oldest plant, so brand-new users aren't nagged on day one.
+    const since = getMark(BACKUP_AT) || state.plants.map((p) => p.added).sort()[0];
+    return L.diffDays(since, t) >= BACKUP_EVERY;
+  }
+
+  // On phones, open the share sheet so the file can go to iCloud Drive, Google Drive or email.
+  async function backup() {
+    const name = `wet-my-plants-backup-${T()}`, text = JSON.stringify(state);
+    const touch = matchMedia('(pointer: coarse)').matches;
+    if (touch && navigator.canShare) {
+      // Chrome on Android won't share .json files, so fall back to the same JSON in a .txt file.
+      const file = [new File([text], name + '.json', { type: 'application/json' }), new File([text], name + '.txt', { type: 'text/plain' })]
+        .find((f) => navigator.canShare({ files: [f] }));
+      if (file) {
+        try {
+          await navigator.share({ files: [file], title: 'Wet My Plants backup' });
+          setMark(BACKUP_AT);
+        } catch (e) {
+          if (e.name !== 'AbortError') { download(name + '.json', text, 'application/json'); setMark(BACKUP_AT); }
+        }
+        return render();
+      }
+    }
+    download(name + '.json', text, 'application/json');
+    setMark(BACKUP_AT);
+    render();
   }
 
   function download(name, text, type) {
@@ -429,7 +468,7 @@
   }
 
   function restore() {
-    chooseFile('application/json,.json', async (file) => {
+    chooseFile('application/json,.json,text/plain,.txt', async (file) => {
       let st;
       try { st = JSON.parse(await file.text()); } catch (e) { st = null; }
       if (!L.validState(st)) return alert('That file is not a Wet My Plants backup.');
@@ -623,6 +662,12 @@
           ${d.rain ? `<p class="rainmm">${icon('drop', 12)} ${Math.round(d.rain * 10) / 10} mm</p>` : ''}
           <p class="tip">${icon(KIND_ICON[d.kind], 14)} ${esc(d.tip)}</p></article>`;
       }).join('')}</section>`);
+    }
+    if (backupDue()) {
+      const last = getMark(BACKUP_AT);
+      out.push(`<div class="alert hint">${icon('download', 22)}<div><b>Time for a backup</b>
+        <span>${last ? `Last backup ${L.diffDays(last, T())} days ago.` : 'You haven’t backed up yet.'} Your plants live only on this device, so save a copy somewhere safe, like iCloud Drive, Google Drive or email.</span>
+        <span class="pair"><button class="chip" data-act="backup">${icon('download', 14)} Back up now</button><button class="link" data-act="backuplater">Not now</button></span></div></div>`);
     }
     if (!state.settings.location) {
       out.push(`<button class="alert hint" data-act="tab" data-tab="more">${icon('pin', 22)}<div><b>Add your town for weather tips</b><span>Daily plant tips from your forecast, and lighter feeding in your winter.</span></div>${icon('arrow', 18)}</button>`);
@@ -881,7 +926,8 @@
       <p class="muted small">Everything is stored only in this browser on this device. Back up now and then.</p>
       <div class="stack">
         <button class="btn outline" data-act="csv">${icon('download', 16)} Export care log (CSV)</button>
-        <button class="btn outline" data-act="backup">${icon('download', 16)} Back up everything (JSON)</button>
+        <p class="muted small">${getMark(BACKUP_AT) ? `Last backup on this device: ${esc(getMark(BACKUP_AT))}.` : 'No backup from this device yet.'} Keep the file off this phone (iCloud Drive, Google Drive or email) so a lost phone doesn’t lose your plants.</p>
+        <button class="btn outline" data-act="backup">${icon('download', 16)} Back up everything</button>
         <button class="btn ghost" data-act="restore">Restore from backup…</button>
       </div></section>`;
   }
